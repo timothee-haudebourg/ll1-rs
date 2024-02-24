@@ -1,0 +1,12 @@
+[workspace]
+members = ["macros"]
+
+[package]
+name = "ll1"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ll1-macros = { path = "macros", version = "0.1.0" }
+locspan = "0.8.2"
+decoded-char = "0.1.1"

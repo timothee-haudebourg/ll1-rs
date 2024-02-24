@@ -1,0 +1,16 @@
+[package]
+name = "ll1-macros"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = "2.0.49"
+proc-macro2 = "1.0.78"
+quote = "1.0.35"
+proc-macro-error = "1.0.4"
+thiserror = "1.0.57"
+btree-range-map = "0.7.2"
+regex-automaton = { path = "/home/timothee/Projets/utils/parsing/regex-automaton" }
