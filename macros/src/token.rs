@@ -240,8 +240,9 @@ pub fn derive(input: syn::DeriveInput) -> Result<TokenStream, TokenDeriveError> 
                         }
 
                         impl ::ll1::Parse for #token_ident {
-                            fn parse_in<_I: Iterator<Item = Result<::ll1::DecodedChar, _E>>, _E>(_context: &::ll1::Context<#ident>, tokens: &mut ::ll1::Lexer<#ident, _I>) -> Result<Self, ::ll1::ParseError<#ident, _E>> {
-                                match tokens.next_token().map_err(::ll1::ParseError::Lexing)? {
+                            fn parse_in<_I: Iterator<Item = Result<::ll1::DecodedChar, _E>>, _E>(context: &::ll1::Context<#ident>, tokens: &mut ::ll1::Lexer<#ident, _I>) -> Result<Self, ::ll1::ParseError<#ident, _E>> {
+                                let context = context.with::<Self>();
+                                match tokens.next_token_in(&context).map_err(::ll1::ParseError::Lexing)? {
                                     (_, Some(#ident::#kind_ident #args)) => Ok(Self #args),
                                     (offset, Some(token)) => Err(::ll1::ParseError::UnexpectedToken(offset, Some(token))),
                                     (offset, None) => Err(::ll1::ParseError::UnexpectedToken(offset, None))

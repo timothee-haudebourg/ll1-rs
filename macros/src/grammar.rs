@@ -412,7 +412,7 @@ impl Node {
         let mut map: HashMap<Type, Vec<usize>> = HashMap::new();
         let mut default_rule = None;
 
-        let repr = rules[0];
+        let repr = rules.get(0).copied();
         for r in rules {
             let rule = &grammar.rules[r];
             match rule.arg(position) {
@@ -436,7 +436,10 @@ impl Node {
         }
 
         Ok(Self {
-            context_ident: format_ident!("_{base_ident}_{repr}_{position}"),
+            context_ident: match repr {
+                Some(repr) => format_ident!("_{base_ident}_{repr}_{position}"),
+                None => format_ident!("_{base_ident}_{position}")
+            },
             context_generics: context_generics.clone(),
             children,
             default_rule,
@@ -452,12 +455,15 @@ impl Node {
 
 			quote! {
 				let rule_context = context.with::<#node_context #context_ty_generics>();
-				if <#ty as ::ll1::LocalContext>::accepts(&rule_context, tokens.peek().map_err(::ll1::ParseError::Lexing)?) {
+				if <#ty as ::ll1::LocalContext>::accepts(&rule_context, next_token) {
 					let #arg = <#ty as ::ll1::Parse>::parse_in(&rule_context, tokens)?;
 					#rest
 				}
 			}
 		});
+
+        let node_context = &self.context_ident;
+		let context_ty_generics = self.context_generics.split_for_impl().1;
 
         let finalize = match self.default_rule {
             Some(i) => {
@@ -473,6 +479,9 @@ impl Node {
         };
 
         quote! {
+            let next_context = context.with::<#node_context #context_ty_generics>();
+            let next_token = tokens.peek_in(&next_context).map_err(::ll1::ParseError::Lexing)?;
+
             #(#cases)*
             #finalize
         }

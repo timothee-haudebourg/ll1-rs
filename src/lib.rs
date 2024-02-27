@@ -41,6 +41,8 @@ impl<T: fmt::Display, E: fmt::Display> fmt::Display for ParseError<T, E> {
     }
 }
 
+impl<T: fmt::Display + fmt::Debug, E: fmt::Display + fmt::Debug> std::error::Error for ParseError<T, E> {}
+
 pub trait Spanned {
     fn start(&self) -> Option<usize>;
 
@@ -68,6 +70,26 @@ impl<T: Spanned> Spanned for Box<T> {
     }
 }
 
+impl<T: Spanned> Spanned for Vec<T> {
+    fn start(&self) -> Option<usize> {
+        self.iter().find_map(T::start)
+    }
+
+    fn end(&self) -> Option<usize> {
+        self.iter().rev().find_map(T::end)
+    }
+}
+
+impl<T: Spanned> Spanned for Option<T> {
+    fn start(&self) -> Option<usize> {
+        self.as_ref().and_then(T::start)
+    }
+
+    fn end(&self) -> Option<usize> {
+        self.as_ref().and_then(T::end)
+    }
+}
+
 pub trait Token: Sized + Spanned {
     fn parse_from<E>(
         offset: usize,
@@ -85,41 +107,78 @@ impl<I: Iterator> Iterator for InfallibleIter<I> {
     }
 }
 
-pub struct Lexer<T, I: Iterator> {
+pub type Completer<'a, I> = dyn 'a + FnMut() -> Option<I>;
+
+pub struct Lexer<'a, T, I: Iterator> {
     offset: usize,
     chars: Peekable<I>,
     next_token: Option<(usize, T)>,
+    completer: Option<Box<Completer<'a, I>>>
 }
 
-impl<T, I: Iterator> Lexer<T, I> {
+impl<'a, T, I: Iterator> Lexer<'a, T, I> {
     pub fn new(chars: I) -> Self {
         Self {
             offset: 0,
             chars: chars.peekable(),
             next_token: None,
+            completer: None
+        }
+    }
+
+    pub fn with_completer(self, f: impl 'a + FnMut() -> Option<I>) -> Self {
+        Self {
+            offset: self.offset,
+            chars: self.chars,
+            next_token: self.next_token,
+            completer: Some(Box::new(f))
         }
     }
 }
 
-impl<T, I, E> Lexer<T, I>
+impl<'a, T, I: Iterator> Lexer<'a, T, InfallibleIter<I>> {
+    pub fn new_infallible(chars: I) -> Self {
+        Self::new(InfallibleIter(chars))
+    }
+}
+
+impl<'a, T, I, E> Lexer<'a, T, I>
 where
     I: Iterator<Item = Result<DecodedChar, E>>,
     T: Token,
 {
-    fn pull_token(&mut self) -> Result<(usize, Option<T>), LexError<E>> {
-        match T::parse_from(self.offset, &mut self.chars) {
-            Ok(Some(token)) => {
-                self.offset = token.span().end();
-                Ok((token.span().start(), Some(token)))
+    fn pull_token(&mut self, context: &Context<T>) -> Result<(usize, Option<T>), LexError<E>> {
+        loop {
+            match T::parse_from(self.offset, &mut self.chars) {
+                Ok(Some(token)) => {
+                    self.offset = token.span().end();
+                    break Ok((token.span().start(), Some(token)))
+                }
+                Ok(None) => {
+                    match &mut self.completer {
+                        Some(k) => {
+                            if context.accepts(None) {
+                                break Ok((self.offset, None))
+                            } else {
+                                match (*k)() {
+                                    Some(i) => {
+                                        self.chars = i.peekable();
+                                    }
+                                    None => break Ok((self.offset, None))
+                                }
+                            }
+                        }
+                        None => break Ok((self.offset, None))
+                    }
+                },
+                Err(e) => break Err(e),
             }
-            Ok(None) => Ok((self.offset, None)),
-            Err(e) => Err(e),
         }
     }
 
-    pub fn peek_with_offset(&mut self) -> Result<(usize, Option<&T>), LexError<E>> {
+    pub fn peek_with_offset_in(&mut self, context: &Context<T>) -> Result<(usize, Option<&T>), LexError<E>> {
         if self.next_token.is_none() {
-            let (offset, token) = self.pull_token()?;
+            let (offset, token) = self.pull_token(context)?;
             self.next_token = token.map(|t| (offset, t))
         }
 
@@ -129,25 +188,37 @@ where
         }
     }
 
+    pub fn peek_with_offset(&mut self) -> Result<(usize, Option<&T>), LexError<E>> {
+        self.peek_with_offset_in(&Context::EndOfStream)
+    }
+
+    pub fn peek_in(&mut self, context: &Context<T>) -> Result<Option<&T>, LexError<E>> {
+        self.peek_with_offset_in(context).map(|(_, t)| t)
+    }
+
     pub fn peek(&mut self) -> Result<Option<&T>, LexError<E>> {
         self.peek_with_offset().map(|(_, t)| t)
     }
 
-    pub fn next_token(&mut self) -> Result<(usize, Option<T>), LexError<E>> {
+    pub fn next_token_in(&mut self, context: &Context<T>) -> Result<(usize, Option<T>), LexError<E>> {
         match self.next_token.take() {
             Some((offset, token)) => Ok((offset, Some(token))),
-            None => self.pull_token(),
+            None => self.pull_token(context),
         }
+    }
+
+    pub fn next_token(&mut self) -> Result<(usize, Option<T>), LexError<E>> {
+        self.next_token_in(&Context::EndOfStream)
     }
 }
 
-impl<'a, T> Lexer<T, InfallibleIter<decoded_char::Utf8Decoded<std::str::Chars<'a>>>> {
+impl<'a, T> Lexer<'static, T, InfallibleIter<decoded_char::Utf8Decoded<std::str::Chars<'a>>>> {
     pub fn for_str(input: &'a str) -> Self {
         Self::new(InfallibleIter(decoded_char::Utf8Decoded(input.chars())))
     }
 }
 
-impl<I, T, E> Iterator for Lexer<T, I>
+impl<'a, I, T, E> Iterator for Lexer<'a, T, I>
 where
     I: Iterator<Item = Result<DecodedChar, E>>,
     T: Spanned + Token,
@@ -190,7 +261,7 @@ pub trait Parse: Sized + LocalContext {
     fn parse<I: Iterator<Item = Result<DecodedChar, E>>, E>(
         mut tokens: Lexer<Self::Token, I>,
     ) -> Result<Self, ParseError<Self::Token, E>> {
-        Self::parse_in(&Context::Empty, &mut tokens)
+        Self::parse_in(&Context::EndOfStream, &mut tokens)
     }
 
     fn parse_in<I: Iterator<Item = Result<DecodedChar, E>>, E>(
@@ -208,8 +279,36 @@ impl<U: Parse> Parse for Box<U> {
     }
 }
 
+impl<T: Parse> Parse for Vec<T> where T::Token: std::fmt::Debug {
+    fn parse_in<I: Iterator<Item = Result<DecodedChar, E>>, E>(
+        _context: &Context<Self::Token>,
+        tokens: &mut Lexer<Self::Token, I>,
+    ) -> Result<Self, ParseError<Self::Token, E>> {
+        let mut result = Vec::new();
+
+        while T::accepts(&Context::Never, tokens.peek().map_err(ParseError::Lexing)?) {
+            result.push(T::parse_in(&Context::Never, tokens)?)
+        }
+
+        Ok(result)
+    }
+}
+
+impl<T: Parse> Parse for Option<T> {
+    fn parse_in<I: Iterator<Item = Result<DecodedChar, E>>, E>(
+        _context: &Context<Self::Token>,
+        tokens: &mut Lexer<Self::Token, I>,
+    ) -> Result<Self, ParseError<Self::Token, E>> {
+        if T::accepts(&Context::Never, tokens.peek().map_err(ParseError::Lexing)?) {
+            Ok(Some(T::parse_in(&Context::Never, tokens)?))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
 pub trait LocalContext {
-    type Token;
+    type Token: Token;
 
     fn accepts(context: &Context<Self::Token>, token: Option<&Self::Token>) -> bool;
 }
@@ -222,11 +321,28 @@ impl<U: LocalContext> LocalContext for Box<U> {
     }
 }
 
+impl<T: LocalContext> LocalContext for Vec<T> {
+    type Token = T::Token;
+
+    fn accepts(context: &Context<Self::Token>, token: Option<&Self::Token>) -> bool {
+        T::accepts(context, token) || context.accepts(token)
+    }
+}
+
+impl<T: LocalContext> LocalContext for Option<T> {
+    type Token = T::Token;
+
+    fn accepts(context: &Context<Self::Token>, token: Option<&Self::Token>) -> bool {
+        T::accepts(context, token) || context.accepts(token)
+    }
+}
+
 pub type ContextAcceptsFn<T> = fn(&Context<T>, Option<&T>) -> bool;
 
 pub enum Context<'a, T> {
-    Empty,
-    NonEmpty {
+    Never,
+    EndOfStream,
+    SubContext {
         parent: &'a Context<'a, T>,
         local: Box<ContextAcceptsFn<T>>,
     },
@@ -234,7 +350,7 @@ pub enum Context<'a, T> {
 
 impl<'a, T> Context<'a, T> {
     pub fn with<L: LocalContext<Token = T>>(&self) -> Context<T> {
-        Context::NonEmpty {
+        Context::SubContext {
             parent: self,
             local: Box::new(L::accepts),
         }
@@ -242,8 +358,9 @@ impl<'a, T> Context<'a, T> {
 
     pub fn accepts(&self, token: Option<&T>) -> bool {
         match self {
-            Self::Empty => token.is_none(),
-            Self::NonEmpty { parent, local } => local(parent, token),
+            Self::Never => false,
+            Self::EndOfStream => token.is_none(),
+            Self::SubContext { parent, local } => local(parent, token),
         }
     }
 }
