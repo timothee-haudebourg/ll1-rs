@@ -195,19 +195,28 @@ pub fn derive(input: syn::DeriveInput) -> Result<TokenStream, TokenDeriveError> 
                     None => quote!(self.1.as_str()),
                 };
 
+                let into_str = match &token.const_ {
+                    Some(c) => quote!(#c.to_owned()),
+                    None => quote!(self.1),
+                };
+
                 if let Some(token_ident) = &token.ident {
                     let arg_types = token.arg_types();
                     let arg_wildcards = token.arg_wildcards();
                     let args = token.args();
 
                     output.extend(quote! {
-                        #[derive(Debug)]
+                        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
                         #(#attrs)*
                         pub struct #token_ident #arg_types ;
 
                         impl #token_ident {
                             pub fn as_str(&self) -> &str {
                                 #as_str
+                            }
+
+                            pub fn into_string(self) -> std::string::String {
+                                #into_str
                             }
                         }
 
@@ -468,6 +477,17 @@ pub fn derive(input: syn::DeriveInput) -> Result<TokenStream, TokenDeriveError> 
                 })
             });
 
+            let into_str_cases = tokens.iter().filter_map(|t| {
+                t.ident.as_ref().map(|token_ident| match &t.const_ {
+                    Some(c) => quote! {
+                        Self::#token_ident(_) => #c.to_owned()
+                    },
+                    None => quote! {
+                        Self::#token_ident(_, buffer) => buffer
+                    },
+                })
+            });
+
             let init_buffer = if capture {
                 Some(quote!(let mut buffer = ::std::string::String::new();))
             } else {
@@ -494,6 +514,12 @@ pub fn derive(input: syn::DeriveInput) -> Result<TokenStream, TokenDeriveError> 
                     pub fn as_str(&self) -> &str {
                         match self {
                             #(#as_str_cases,)*
+                        }
+                    }
+
+                    pub fn into_string(self) -> ::std::string::String {
+                        match self {
+                            #(#into_str_cases,)*
                         }
                     }
                 }
