@@ -4,8 +4,6 @@ use quote::{quote, ToTokens};
 use std::{collections::HashMap, str::FromStr};
 use syn::spanned::Spanned;
 
-use regex_automaton::{regexp, Automaton, RegExp};
-
 const IDENT_REGEXP: &str = "[a-zA-Z_][a-zA-Z0-9_]*";
 const WHITESPACE_REGEXP: &str = "[\\s\\t]+";
 
@@ -24,7 +22,7 @@ pub enum TokenDeriveError {
     Ambiguity(Span, Ident),
 
     #[error("invalid regular expression: {1}")]
-    RegExp(Span, regexp::ParseError),
+    RegExp(Span, ere::syntax::Error),
 
     #[error("cannot skip empty token")]
     SkipEmpty(Span),
@@ -51,21 +49,21 @@ pub enum Value {
     Whitespace,
     Ident,
     Const(String),
-    RegExp(RegExp),
+    RegExp(ere::syntax::Ast),
 }
 
 impl Value {
     /// Builds the automaton represented by this value.
-    pub fn build_automaton(&self) -> Automaton<usize> {
+    pub fn build_automaton(&self) -> ere::automata::NFA<usize> {
         match self {
-            Self::Whitespace => RegExp::from_str(WHITESPACE_REGEXP)
+            Self::Whitespace => ere::syntax::Ast::from_str(WHITESPACE_REGEXP)
                 .unwrap()
-                .build_non_deterministic(),
-            Self::Ident => RegExp::from_str(IDENT_REGEXP)
+                .build_nfa(),
+            Self::Ident => ere::syntax::Ast::from_str(IDENT_REGEXP)
                 .unwrap()
-                .build_non_deterministic(),
+                .build_nfa(),
             Self::Const(s) => {
-                let mut aut = Automaton::new();
+                let mut aut = ere::automata::NFA::new();
 
                 let mut q = 0;
                 aut.declare_state(q);
@@ -83,7 +81,7 @@ impl Value {
                 aut.add_final_state(q);
                 aut
             }
-            Self::RegExp(e) => e.build_non_deterministic(),
+            Self::RegExp(e) => e.build_nfa(),
         }
     }
 }
@@ -159,7 +157,7 @@ pub fn derive(input: syn::DeriveInput) -> Result<TokenStream, TokenDeriveError> 
     match input.data {
         syn::Data::Enum(e) => {
             let mut output = TokenStream::new();
-            let mut automaton: Automaton<TokenState> = Automaton::new();
+            let mut automaton: ere::automata::NFA<TokenState> = ere::automata::NFA::new();
             let mut tokens = Vec::with_capacity(e.variants.len());
             let mut capture = false;
 

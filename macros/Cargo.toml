@@ -13,4 +13,4 @@ quote = "1.0.35"
 proc-macro-error = "1.0.4"
 thiserror = "1.0.57"
 btree-range-map = "0.7.2"
-regex-automaton = { path = "/home/timothee/Projets/utils/parsing/regex-automaton" }
+ere = { path = "/home/work/Documents/Community/parsing/ere" }
