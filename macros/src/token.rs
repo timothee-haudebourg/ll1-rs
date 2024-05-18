@@ -22,7 +22,7 @@ pub enum TokenDeriveError {
     Ambiguity(Span, Ident),
 
     #[error("invalid regular expression: {1}")]
-    RegExp(Span, ere::syntax::Error),
+    RegExp(Span, iregex_syntax::Error),
 
     #[error("cannot skip empty token")]
     SkipEmpty(Span),
@@ -49,39 +49,39 @@ pub enum Value {
     Whitespace,
     Ident,
     Const(String),
-    RegExp(ere::syntax::Ast),
+    RegExp(iregex_syntax::Disjunction),
 }
 
 impl Value {
     /// Builds the automaton represented by this value.
-    pub fn build_automaton(&self) -> ere::automata::NFA<usize> {
+    pub fn build_automaton(&self) -> iregex::automata::NFA {
+        let mut state_builder = iregex::automata::nfa::U32StateBuilder::new();
+        iregex::IRegEx::anchored(self.build())
+            .compile(&mut state_builder)
+            .unwrap()
+            .root
+            .unwrap()
+            .unwrap()
+            .untagged
+    }
+
+    /// Builds the automaton represented by this value.
+    pub fn build(&self) -> iregex::Alternation {
         match self {
-            Self::Whitespace => ere::syntax::Ast::from_str(WHITESPACE_REGEXP)
+            Self::Whitespace => iregex_syntax::Disjunction::from_str(WHITESPACE_REGEXP)
                 .unwrap()
-                .build_nfa(),
-            Self::Ident => ere::syntax::Ast::from_str(IDENT_REGEXP)
+                .build(),
+            Self::Ident => iregex_syntax::Disjunction::from_str(IDENT_REGEXP)
                 .unwrap()
-                .build_nfa(),
+                .build(),
             Self::Const(s) => {
-                let mut aut = ere::automata::NFA::new();
-
-                let mut q = 0;
-                aut.declare_state(q);
-                aut.add_initial_state(q);
-
-                for c in s.chars() {
-                    let r = q + 1;
-                    aut.declare_state(r);
+                iregex_syntax::Sequence::from_iter(s.chars().map(|c| {
                     let mut set = RangeSet::new();
                     set.insert(c);
-                    aut.add(q, Some(set), r);
-                    q = r;
-                }
-
-                aut.add_final_state(q);
-                aut
+                    iregex_syntax::Atom::Set(set.into())
+                })).into_disjunction().build()
             }
-            Self::RegExp(e) => e.build_nfa(),
+            Self::RegExp(e) => e.build(),
         }
     }
 }
@@ -157,7 +157,7 @@ pub fn derive(input: syn::DeriveInput) -> Result<TokenStream, TokenDeriveError> 
     match input.data {
         syn::Data::Enum(e) => {
             let mut output = TokenStream::new();
-            let mut automaton: ere::automata::NFA<TokenState> = ere::automata::NFA::new();
+            let mut automaton: iregex::automata::NFA<TokenState> = iregex::automata::NFA::new();
             let mut tokens = Vec::with_capacity(e.variants.len());
             let mut capture = false;
 
@@ -170,7 +170,7 @@ pub fn derive(input: syn::DeriveInput) -> Result<TokenStream, TokenDeriveError> 
                     return Err(TokenDeriveError::SkipEmpty(span));
                 }
 
-                let const_ = token_automaton.to_const();
+                let const_ = token_automaton.to_singleton().map(String::from_iter);
                 let is_const = const_.is_some();
 
                 let token = Token {
@@ -591,7 +591,7 @@ pub fn derive(input: syn::DeriveInput) -> Result<TokenStream, TokenDeriveError> 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct TokenState {
     token: usize,
-    state: usize,
+    state: u32,
 }
 
 struct Token {
@@ -626,22 +626,6 @@ impl Token {
         }
     }
 }
-
-// fn generate_set_pattern(set: &AnyRange<char>) -> TokenStream {
-//     let ranges = set.map(|range| {
-//         if range.len() == 1 {
-//             let c = range.first().unwrap();
-//             quote! { #c }
-//         } else {
-//             let first = range.first().unwrap();
-//             let last = range.last().unwrap();
-//             quote! { #first..=#last }
-//         }
-//     });
-//     quote! {
-//         #(#ranges)|*
-//     }
-// }
 
 fn rust_range(range: AnyRange<char>) -> TokenStream {
     if range.len() == 1 {

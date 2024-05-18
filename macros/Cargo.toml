@@ -13,4 +13,5 @@ quote = "1.0.35"
 proc-macro-error = "1.0.4"
 thiserror = "1.0.57"
 btree-range-map = "0.7.2"
-ere = { path = "/home/work/Documents/Community/parsing/ere" }
+iregex = { path = "/home/timothee/Projets/utils/parsing/iregex" }
+iregex-syntax = { path = "/home/timothee/Projets/utils/parsing/iregex/crates/syntax" }
