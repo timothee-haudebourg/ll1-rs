@@ -1,7 +1,15 @@
 [package]
 name = "ll1-macros"
-version = "0.1.0"
-edition = "2021"
+description = "Macros for the `ll1` crate"
+keywords = ["ll1", "grammar", "parser"]
+categories = ["development-tools", "parsing"]
+readme = "README.md"
+documentation = "https://docs.rs/ll1-macros"
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+edition.workspace = true
+version.workspace = true
 
 [lib]
 proc-macro = true
@@ -13,5 +21,5 @@ quote = "1.0.35"
 proc-macro-error = "1.0.4"
 thiserror = "1.0.57"
 btree-range-map = "0.7.2"
-iregex = { path = "/home/timothee/Projets/utils/parsing/iregex" }
-iregex-syntax = { path = "/home/timothee/Projets/utils/parsing/iregex/crates/syntax" }
+iregex = "0.1"
+iregex-syntax = "0.1"

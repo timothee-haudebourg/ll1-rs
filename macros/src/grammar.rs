@@ -412,7 +412,7 @@ impl Node {
 		let mut map: HashMap<Type, Vec<usize>> = HashMap::new();
 		let mut default_rule = None;
 
-		let repr = rules.get(0).copied();
+		let repr = rules.first().copied();
 		for r in rules {
 			let rule = &grammar.rules[r];
 			match rule.arg(position) {

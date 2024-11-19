@@ -1,3 +1,6 @@
+//! Derive macro definition for the [`ll1`] crate.
+//!
+//! [`ll1`]: <https://crates.io/crates/ll1>
 use proc_macro::TokenStream;
 use proc_macro_error::{abort, proc_macro_error};
 use syn::parse_macro_input;

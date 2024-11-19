@@ -38,12 +38,6 @@ pub enum Factor {
 	Ident(Ident),
 }
 
-#[derive(Debug, ll1::Parse)]
-pub enum List<T> {
-	Empty,
-	NonEmpty(T, Mul, Box<Self>),
-}
-
 fn main() {
 	use ll1::Parse;
 	let expr = Expr::parse_str("a * b + c").unwrap();

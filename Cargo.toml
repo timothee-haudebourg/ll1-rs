@@ -1,10 +1,25 @@
 [workspace]
 members = ["macros"]
 
+[workspace.package]
+authors = ["Timothée Haudebourg <timothee@haudebourg.net>"]
+license = "MIT/Apache-2.0"
+repository = "https://github.com/timothee-haudebourg/ll1-rs"
+edition = "2021"
+version = "0.1.0"
+
 [package]
 name = "ll1"
-version = "0.1.0"
-edition = "2021"
+description = "Generate LL1 grammars with a simple derive macro."
+keywords = ["ll1", "grammar", "parser"]
+categories = ["development-tools", "parsing"]
+readme = "README.md"
+documentation = "https://docs.rs/ll1"
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+edition.workspace = true
+version.workspace = true
 
 [dependencies]
 ll1-macros = { path = "macros", version = "0.1.0" }
